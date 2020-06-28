@@ -1,20 +1,38 @@
 package com.example.tictactoe
 
-import androidx.appcompat.app.AppCompatActivity
+import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
 import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
+
 
 class MainActivity : AppCompatActivity() {
+    var myEmail:String?=null
 
+    private var database = FirebaseDatabase.getInstance()
+    private var mAuth: FirebaseAuth? = null
+    var myRef = database.reference
+    private var mFirebaseAnalytics: FirebaseAnalytics? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        mFirebaseAnalytics = FirebaseAnalytics.getInstance(this);
+
+        var b:Bundle=intent.extras
+        myEmail=b.getString("email")
+        income()
     }
 
     fun click(view:View)
@@ -36,7 +54,7 @@ class MainActivity : AppCompatActivity() {
         }
 //        Log.d("cellid",cellid.toString())
 //        Log.d("buClicked",bu.id.toString())
-        playgame(cellid,bu)
+        myRef.child("playOnline").child(sessId!!).child(cellid.toString()).setValue(myEmail)
 
     }
     var activePlayer=1
@@ -50,7 +68,7 @@ class MainActivity : AppCompatActivity() {
             bu.setBackgroundResource(R.color.x)
             player1.add(cellid)
             activePlayer=2
-            autoplay()
+
         }
         else
         {
@@ -61,8 +79,6 @@ class MainActivity : AppCompatActivity() {
         }
         bu.isEnabled=false
         checkwinner()
-
-
     }
     fun checkwinner()
     {
@@ -103,31 +119,16 @@ class MainActivity : AppCompatActivity() {
         if(winner==1) {
             Toast.makeText(this, "PLAYER 1 WINS", Toast.LENGTH_LONG).show()
             restart()
-
-
-
         }
 
         else if(winner==2) {
             Toast.makeText(this, "PLAYER 2 WINS", Toast.LENGTH_LONG).show()
             restart()
-
         }
 
     }
-    fun autoplay()
+    fun autoplay(cellid:Int)
     {
-        var emptycells= ArrayList<Int>()
-        for(cellid in 1..9)
-        {
-            if(!player1.contains(cellid) || player2.contains(cellid))
-            {
-                emptycells.add(cellid)
-            }
-        }
-        val r= Random()
-        val ranIndex= r.nextInt(emptycells.size)
-        val cellid=emptycells[ranIndex]
 
         var bu:Button?
         bu=when(cellid)
@@ -174,5 +175,107 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun accept(view:View)
+    {
+        var email=name.text.toString()
+        myRef.child("users").child(split(email)).child("request").push().setValue(myEmail)
+        playOnline(split(email)+split(myEmail!!))
+        playSym="O"
+
+    }
+    fun request(view:View)
+    {
+        var email=name.text.toString()
+        myRef.child("users").child(split(email)).child("request").push().setValue(myEmail)
+        playOnline(split(myEmail!!)+split(email))
+        playSym="X"
+    }
+    var sessId:String?=null
+    var playSym:String?=null
+    fun playOnline(sessId:String)
+    {
+        this.sessId=sessId
+        myRef.child("playOnline").removeValue()
+        myRef.child("playOnline").child(sessId)
+            .addValueEventListener(object:ValueEventListener
+            {
+                override fun onCancelled(p0: DatabaseError) {
+                }
+
+                override fun onDataChange(p0: DataSnapshot) {
+                    try {
+                        player1.clear()
+                        player2.clear()
+                        val td=p0!!.value as HashMap<String,Any>
+                        if(td!=null)
+                        {
+                            var value:String
+                            for(key in td.keys)
+                            {
+                                value=td[key] as String
+                                if(value!=myEmail)
+                                {
+                                    activePlayer=if(playSym=="X") 1 else 2
+                                }
+                                else
+                                {
+                                    activePlayer=if(playSym=="X") 2 else 1
+                                }
+                                autoplay(key.toInt())
+
+
+                            }
+                        }
+                    }
+                    catch (Ex:Exception)
+                    {}
+                }
+
+            })
+    }
+    fun split(str:String):String
+    {
+        var sp=str.split("@")
+        return sp[0]
+    }
+    var num=0
+    fun income()
+    {
+        myRef.child("users").child(split(myEmail!!)).child(("request"))
+            .addValueEventListener(object:ValueEventListener
+            {
+                override fun onCancelled(p0: DatabaseError) {
+                }
+
+                override fun onDataChange(p0: DataSnapshot) {
+                    try {
+                        val td=p0!!.value as HashMap<String,Any>
+                        if(td!=null)
+                        {
+                            var value:String
+                            for(key in td.keys)
+                            {
+                                value=td[key] as String
+                                name.setText(value)
+                                val notifyme=Notifications()
+                                notifyme.Notify(applicationContext,value+"play game",num)
+                                num++
+                                myRef.child("users").child(split(myEmail.toString())).child("request").setValue(true)
+                                break
+                            }
+                        }
+                    }
+                    catch (Ex:Exception)
+                    {}
+                }
+
+            })
+    }
+
+
 
 }
+
+
+
+
